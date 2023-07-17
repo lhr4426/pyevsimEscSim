@@ -2,6 +2,7 @@ from pyevsim import BehaviorModelExecutor, SystemSimulator, Infinite, SysMessage
 from NPCModel import NPCModel
 from random import randint
 from enum import Enum
+import os
 
 class EndPointDirection(Enum) :
     up = 0
@@ -29,14 +30,16 @@ class GameModel(BehaviorModelExecutor) :
 
         self.insert_input_port("start")
         self.insert_output_port("move")
+        self.insert_output_port("you_are_bumped")
 
         self.map_size = map_size
-        self.map = [['M'] * self.map_size for _ in range(self.map_size)]
-        self.end_point = self.get_endPoint(self.map_size)
+        self.map = [['ㅁ'] * self.map_size for _ in range(self.map_size)]
+        self.end_point = self.get_endPoint()
 
-        self.map[self.end_point[0]][self.end_point[1]] = 'O' # 탈출구 설정
+        self.map[self.end_point[0]][self.end_point[1]] = '문' # 탈출구 설정
 
         self.agent_count = agent_count # 에이전트의 수
+        self.agent_location_arr = []
 
         self.print()
 
@@ -72,12 +75,29 @@ class GameModel(BehaviorModelExecutor) :
     def output(self) :
         if self.get_cur_state() == "NpcGen" :
             engine = SystemSimulator.get_engine(self.get_engine_name())
-
-            for idx in range(1, self.agent_count + 1) :
-                npc = NPCModel(0, Infinite, f"npc_{idx}", self.engine_name, self.map_size)
+            for idx in range(self.agent_count) :
+                '''
+                지정한 agent 수 대로 0부터 해서 agent를 생성하고 연결함
+                '''
+                os.system("clear")
+                npc = NPCModel(0, Infinite, f"{idx}", self.engine_name, self.map_size, self.end_point)
                 print(f"npc_{idx} registered")
                 engine.register_entity(npc)
                 engine.coupling_relation(self, "move", npc, "move")
+                # you_are_bumped => 누군가랑 부딛쳤다는 뜻
+                engine.coupling_relation(self, "you_are_bumped", npc, "you_are_bumped") 
+                # 생성하자마자 겹치지는 않도록 설정함
+                while (npc.get_location() in self.agent_location_arr) :
+                    npc.reset_location()
+                self.agent_location_arr.append(npc.get_location())
+            self.draw_agent()
+            self.print()
+                
+    def draw_agent(self) :
+        idx = 0
+        for loc in self.agent_location_arr :
+            self.map[loc[0]][loc[1]] = idx
+            idx += 1
 
     def int_trans(self) :
         if self.get_cur_state() == "NpcGen" :
