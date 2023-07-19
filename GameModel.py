@@ -1,8 +1,9 @@
 from pyevsim import BehaviorModelExecutor, SystemSimulator, Infinite, SysMessage
-from NPCModel import NPCModel
+from NPCModel import NPCModel, MovingDirection
 from random import randint
 from enum import Enum
-import os
+import os, sys
+import copy
 
 class EndPointDirection(Enum) :
     up = 0
@@ -17,7 +18,7 @@ class GameModel(BehaviorModelExecutor) :
         3. CD때 충돌을 확인함  
     '''
 
-    def __init__(self, instance_time, destruct_time, name, engine_name, map_size = 10, agent_count = 3) :
+    def __init__(self, instance_time, destruct_time, name, engine_name, map_size = 10, agent_count = 3, max_epoch = 1, max_move = 50) :
         '''
         주어진 크기의 맵을 만듬
         '''
@@ -27,16 +28,26 @@ class GameModel(BehaviorModelExecutor) :
         self.insert_state("NpcGen", 1)
         self.insert_state("Action", 1)
         self.insert_state("ColliDetec", 1)
+        self.insert_state("PrintMap", 1)
+        self.insert_state("EpochEnd", Infinite)
 
         self.insert_input_port("start")
+        self.insert_input_port("location")
         self.insert_output_port("move")
         self.insert_output_port("you_are_bumped")
+        self.insert_output_port("epoch_end")
 
+        self.engine = SystemSimulator.get_engine(self.get_engine_name())
+
+        self.max_epoch = max_epoch
         self.map_size = map_size
-        self.map = [['ㅁ'] * self.map_size for _ in range(self.map_size)]
+        self.max_move = max_move # 한 개체 당 최대 움직임 수
+        self.move_count = 0
+        self.epoch = 0
+        self.current_map = [['ㅁ'] * self.map_size for _ in range(self.map_size)]
         self.end_point = self.get_endPoint()
 
-        self.map[self.end_point[0]][self.end_point[1]] = '문' # 탈출구 설정
+        self.current_map[self.end_point[0]][self.end_point[1]] = '문' # 탈출구 설정
 
         self.agent_count = agent_count # 에이전트의 수
         self.agent_location_arr = []
@@ -66,7 +77,10 @@ class GameModel(BehaviorModelExecutor) :
         '''
         맵 정보를 출력함
         '''
-        print(*self.map, sep="\n")
+        os.system("clear")
+        print(*self.current_map, sep="\n")
+        print("=============================")
+
             
     def ext_trans(self, port, msg) :
         if port == "start" :
@@ -74,7 +88,6 @@ class GameModel(BehaviorModelExecutor) :
 
     def output(self) :
         if self.get_cur_state() == "NpcGen" :
-            engine = SystemSimulator.get_engine(self.get_engine_name())
             for idx in range(self.agent_count) :
                 '''
                 지정한 agent 수 대로 0부터 해서 agent를 생성하고 연결함
@@ -82,21 +95,71 @@ class GameModel(BehaviorModelExecutor) :
                 os.system("clear")
                 npc = NPCModel(0, Infinite, f"{idx}", self.engine_name, self.map_size, self.end_point)
                 print(f"npc_{idx} registered")
-                engine.register_entity(npc)
-                engine.coupling_relation(self, "move", npc, "move")
+                self.engine.register_entity(npc)
+                self.engine.coupling_relation(self, "move", npc, "move")
                 # you_are_bumped => 누군가랑 부딛쳤다는 뜻
-                engine.coupling_relation(self, "you_are_bumped", npc, "you_are_bumped") 
+                self.engine.coupling_relation(self, "you_are_bumped", npc, "you_are_bumped") 
+                self.engine.coupling_relation(self, "epoch_end", npc, "epoch_end")
                 # 생성하자마자 겹치지는 않도록 설정함
                 while (npc.get_location() in self.agent_location_arr) :
                     npc.reset_location()
                 self.agent_location_arr.append(npc.get_location())
             self.draw_agent()
             self.print()
+        elif self.get_cur_state() == "Action" :
+            if self.epoch >= self.max_epoch :
+                with open("end.txt", "w") as file :
+                    file.write("Best Move Log and Score\n")
+                    for i in range(self.agent_count) :
+                        npc = self.engine.get_entity(f"{i}")[0]
+                        best_arr = npc.best_move_arr
+                        file.write(f"Agent {i}\n")
+                        file.write(f"- Start Location : {npc.start_location}\n")
+                        file.write("- Move Log : ")
+                        for direction in best_arr :
+                            file.write(f"{MovingDirection(direction).name} ")
+                        file.write(f"\n- Raw Move Log : {best_arr}")
+                        file.write(f"\n- Final Score : {npc.best_score}\n\n")
+                exit()
                 
+            if self.move_count >= self.max_move :
+                self.move_count = 0
+                self.epoch += 1
+                msg = SysMessage(self.get_name(), "epoch_end")
+                msg.insert(None)
+            else :
+                msg = SysMessage(self.get_name(), "move")
+                msg.insert("move")
+            return msg
+        
+        elif self.get_cur_state() == "ColliDetec" :
+            self.move_count += 1
+            for i in range(len(self.agent_location_arr) - 1) :
+                for j in range(i + 1, len(self.agent_location_arr)) :
+                    if self.agent_location_arr[i] == self.agent_location_arr[j] :
+                        msg = SysMessage(self.get_name(), "you_are_bumped")
+                        msg.insert(f"{i}")
+                        msg.insert(f"{j}")
+                        return msg
+        elif self.get_cur_state() == "PrintMap" :
+            '''
+            여기서 업데이트된 agent들의 위치정보를 가져옴과 동시에 맵을 그릴거임 
+            근데 그 전에 위치를 다시 'ㅁ' 로 바꿔야됨
+            '''
+            for loc in self.agent_location_arr :
+                self.current_map[loc[0]][loc[1]] = 'ㅁ'
+
+            for i in range(len(self.agent_location_arr)) :
+                npc = self.engine.get_entity(f"{i}")[0]
+                self.agent_location_arr[i] = npc.get_location()
+
+            self.draw_agent()
+            self.print()    
+        
     def draw_agent(self) :
         idx = 0
         for loc in self.agent_location_arr :
-            self.map[loc[0]][loc[1]] = idx
+            self.current_map[loc[0]][loc[1]] = idx
             idx += 1
 
     def int_trans(self) :
@@ -105,5 +168,7 @@ class GameModel(BehaviorModelExecutor) :
         elif self.get_cur_state() == "Action" :
             self._cur_state = "ColliDetec"
         elif self.get_cur_state() == "ColliDetec" :
+            self._cur_state = "PrintMap"
+        elif self.get_cur_state() == "PrintMap" :
             self._cur_state = "Action"
 

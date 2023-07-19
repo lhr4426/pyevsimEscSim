@@ -1,0 +1,7 @@
+Best Move Log and Score
+Agent 0
+- Start Location : [9, 3]
+- Move Log : r r r r 
+- Raw Move Log : [3, 3, 3, 3]
+- Final Score : 596
+
