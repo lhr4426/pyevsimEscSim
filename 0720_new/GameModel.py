@@ -72,7 +72,8 @@ class GameModel(BehaviorModelExecutor) :
         '''
         맵 정보를 출력함
         '''
-        os.system("clear")
+        # os.system("clear") # 맥용
+        os.system("cls") # 윈도우용
         print(*self.current_map, sep="\n")
         print("=============================")
 
@@ -113,7 +114,8 @@ class GameModel(BehaviorModelExecutor) :
                 ''' 
                 지정한 agent 수 대로 0부터 해서 생성하고 연결
                 ''' 
-                os.system("clear")
+                # os.system("clear") # 맥용 
+                os.system("cls") # 윈도우용
                 npc = NPCModel(0, Infinite, f"{idx}", self.engine_name, self.map_size, self.end_point, self.max_epoch, self.max_move)
                 self.engine.register_entity(npc)
                 self.engine.coupling_relation(self, "GAME2NPC", npc, "GAME2NPC")
@@ -135,17 +137,19 @@ class GameModel(BehaviorModelExecutor) :
             return msg
         
         elif self.get_cur_state() == "ColliDetec" :
-            collision_detect = []
             msg = SysMessage(self.get_name(), "GAME2NPC")
             msg.insert("Bumped")
             msg.insert(f"{randint(0,1)}")
             for i in range(len(self.agent_location_arr) - 1) :
+                temp = []
                 for j in range(i + 1, len(self.agent_location_arr)) :
                     if self.agent_location_arr[i] == self.agent_location_arr[j] :
-                        collision_detect.append(f"{i}")
-                        collision_detect.append(f"{j}")
+                        temp.append(i)
+                        temp.append(j)
+                if len(temp) != 0 :
+                    msg.insert(temp)
                     
-            if len(collision_detect) != 0 :
+            if len() != 0 :
                 for idx in collision_detect :
                     msg.insert(f"{idx}")
                 return msg
