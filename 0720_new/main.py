@@ -7,7 +7,11 @@ if __name__ == "__main__" :
     engine = ss.register_engine("main_engine", "VIRTUAL_TIME", 1)
     engine.insert_input_port("start")
 
-    game = GameModel.GameModel(0, Infinite, 'game', 'main_engine', 10, 2, 10, 50)
+    game = GameModel.GameModel(instance_time = 0, destruct_time = Infinite, 
+                               name='game', engine_name='main_engine', map_size = 10, 
+                               agent_count = 2, max_epoch = 10, 
+                               max_move = 20,random_percent = 0.8)
+    
     engine.register_entity(game)
 
     engine.coupling_relation(None, "start", game, "start")

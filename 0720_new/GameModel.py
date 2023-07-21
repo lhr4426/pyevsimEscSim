@@ -2,7 +2,7 @@ from pyevsim import BehaviorModelExecutor, SystemSimulator, Infinite, SysMessage
 from NPCModel import NPCModel, MovingDirection
 from random import randint
 from enum import Enum
-import os
+import os, copy
 
 class EndPointDirection(Enum) :
     up = 0
@@ -17,7 +17,7 @@ class GameModel(BehaviorModelExecutor) :
         3. CD때 충돌을 확인함  
     '''
 
-    def __init__(self, instance_time, destruct_time, name, engine_name, map_size = 10, agent_count = 3, max_epoch = 1, max_move = 50) :
+    def __init__(self, instance_time, destruct_time, name, engine_name, map_size = 10, agent_count = 3, max_epoch = 1, max_move = 50, random_percent = 0.5) :
         BehaviorModelExecutor.__init__(self, instance_time, destruct_time, name, engine_name)
         self.init_state("Init")
         self.insert_state("Init", Infinite)
@@ -26,7 +26,7 @@ class GameModel(BehaviorModelExecutor) :
         self.insert_state("Move", 1)
         self.insert_state("ColliDetec", 1)
         self.insert_state("PrintMap", 1)
-        self.insert_state("SimEnd", Infinite)
+        self.insert_state("SimEnd", 1)
 
         self.insert_input_port("start")
         self.insert_input_port("NPC2GAME")
@@ -40,6 +40,7 @@ class GameModel(BehaviorModelExecutor) :
         self.max_move = max_move # 한 개체 당 최대 움직임 수
         self.move_count = 0
         self.epoch = 0
+        self.random_percent = random_percent
         self.current_map = [['ㅁ'] * self.map_size for _ in range(self.map_size)]
         self.end_point = self.get_endPoint()
 
@@ -72,8 +73,8 @@ class GameModel(BehaviorModelExecutor) :
         '''
         맵 정보를 출력함
         '''
-        # os.system("clear") # 맥용
-        os.system("cls") # 윈도우용
+        os.system("clear") # 맥용
+        # os.system("cls") # 윈도우용
         print(*self.current_map, sep="\n")
         print("=============================")
 
@@ -94,7 +95,7 @@ class GameModel(BehaviorModelExecutor) :
                 # 이 NPC가 탈출에 성공해서 조기종료 한 것인지?
                 if end_npc.escaped == 1 :
                     self.current_map[end_npc_location[0]][end_npc_location[1]] = '문'
-                    self.agent_location_arr[msg.retrieve()[1]] = [None, None]
+                    self.agent_location_arr[int(msg.retrieve()[1])] = [None, None]
                 # 끝난 에이전트 모음에 추가
                 if msg.retrieve()[1] not in self.ended_agent :
                     self.ended_agent.append(msg.retrieve()[1])
@@ -114,9 +115,9 @@ class GameModel(BehaviorModelExecutor) :
                 ''' 
                 지정한 agent 수 대로 0부터 해서 생성하고 연결
                 ''' 
-                # os.system("clear") # 맥용 
-                os.system("cls") # 윈도우용
-                npc = NPCModel(0, Infinite, f"{idx}", self.engine_name, self.map_size, self.end_point, self.max_epoch, self.max_move)
+                os.system("clear") # 맥용 
+                # os.system("cls") # 윈도우용
+                npc = NPCModel(0, Infinite, f"{idx}", self.engine_name, self.map_size, self.end_point, self.max_epoch, self.max_move, self.random_percent)
                 self.engine.register_entity(npc)
                 self.engine.coupling_relation(self, "GAME2NPC", npc, "GAME2NPC")
                 self.engine.coupling_relation(npc, "NPC2GAME", self, "NPC2GAME")
@@ -132,30 +133,38 @@ class GameModel(BehaviorModelExecutor) :
             return msg
         
         elif self.get_cur_state() == "Move" :
+            self.move_count += 1
             msg = SysMessage(self.get_name(), "GAME2NPC")
             msg.insert("Move")
             return msg
         
         elif self.get_cur_state() == "ColliDetec" :
+            agent_arr = list(range(self.agent_count))
+            colli_arr = []
             msg = SysMessage(self.get_name(), "GAME2NPC")
             msg.insert("Bumped")
-            msg.insert(f"{randint(0,1)}")
-            for i in range(len(self.agent_location_arr) - 1) :
-                temp = []
-                for j in range(i + 1, len(self.agent_location_arr)) :
-                    if self.agent_location_arr[i] == self.agent_location_arr[j] :
-                        temp.append(i)
-                        temp.append(j)
-                if len(temp) != 0 :
-                    msg.insert(temp)
+            
+            while(agent_arr) :
+                idx = 0
+                temp = [agent_arr[0]]
+                for i in range(idx + 1, len(agent_arr)) :
+                    if self.agent_location_arr[agent_arr[0]] == self.agent_location_arr[agent_arr[i]]:
+                        temp.append(agent_arr[i])
+
+                if len(temp) != 1 :
+                    colli_arr.append(temp)
+                
+                for j in temp :
+                    del agent_arr[agent_arr.index(j)]            
                     
-            if len() != 0 :
-                for idx in collision_detect :
-                    msg.insert(f"{idx}")
+            if len(colli_arr) != 0 :
+                msg.insert(colli_arr)
                 return msg
             
         elif self.get_cur_state() == "PrintMap" :
             for loc in self.agent_location_arr :
+                if loc == [None, None] :
+                    continue
                 if loc == self.end_point :
                     self.current_map[loc[0]][loc[1]] = '문'
                 else :
@@ -170,22 +179,25 @@ class GameModel(BehaviorModelExecutor) :
 
         elif self.get_cur_state() == "SimEnd" :
             with open("Result.txt", "w") as file :
-                file.write("Best Move Log and Score\n")
+                file.write("Best Move Log and Score\n\n")
+                file.write(f"End Point : {self.end_point}\n\n")
+                file.write("===========================================\n")
                 for i in range(self.agent_count) :
                     npc = self.engine.get_entity(f"{i}")[0]
                     best_arr = npc.best_move_arr
                     file.write(f"Agent {i}\n")
                     file.write(f"- Start Location : {npc.start_location}\n")
+                    file.write(f"- Move Log : ")
                     for direction in best_arr :
                             file.write(f"{MovingDirection(direction).name} ")
+                    file.write(f"\n- Raw Move Log : {best_arr}")
                     file.write(f"\n- Escaped : ")
                     if npc.best_escaped == 1 :
                         file.write("True")
                     else :
                         file.write("False")
-                    file.write(f"\n- Raw Move Log : {best_arr}")
                     file.write(f"\n- Final Score : {npc.best_score}\n\n")
-                    file.write("===========================================")
+                    file.write("===========================================\n")
             exit()
 
     def int_trans(self) :

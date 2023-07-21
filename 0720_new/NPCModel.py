@@ -17,7 +17,7 @@ class NPCModel(BehaviorModelExecutor) :
         3. 1 에포크당 움직인 내역 + 움직였을때 점수 저장
     '''
 
-    def __init__(self, instance_time, destruct_time, name, engine_name, map_size, end_point, max_epoch, max_move) :
+    def __init__(self, instance_time, destruct_time, name, engine_name, map_size, end_point, max_epoch, max_move, random_percent = 0.8) :
         BehaviorModelExecutor.__init__(self, instance_time, destruct_time, name, engine_name)
         self.init_state("Init")
         self.insert_state("Init", Infinite)
@@ -39,8 +39,8 @@ class NPCModel(BehaviorModelExecutor) :
 
         self.start_location = self.reset_location()
         self.location = deepcopy(self.start_location)
-        self.move_log = [] # 움직인 로그 저장용
-        self.score_log = [] # 한 움직임에 대한 점수 변화 결과 저장
+        self.move_log = [[]] # 움직인 로그 저장용
+        self.score_log = [[]] # 한 움직임에 대한 점수 변화 결과 저장
         self.escaped_log = [] # 해당 에포크에서 나갔나 안나갔나 저장
         self.score = 500 # 스코어 500에서 시작
         self.old_location = [] # 이전 위치를 저장 (나중에 충돌났을때 이전 위치로 돌리고 멈추게 하려고)
@@ -57,6 +57,9 @@ class NPCModel(BehaviorModelExecutor) :
         self.current_decision = None
         self.escaped = 0
         self.max_move = max_move 
+
+        # 잘 탈출한 선례를 몇 퍼센트의 확률로 따를 것인가
+        self.random_percent = random_percent 
         
     def get_location(self) :
         return self.location
@@ -144,41 +147,44 @@ class NPCModel(BehaviorModelExecutor) :
         print(f"current score : {self.score}")
         print(f"current decision : {self.current_decision}")
 
-    def make_choice(self,index, percent, decision_len) -> int :
+    def make_choice(self,index, decision_len) -> int :
         '''
         만약에 이번이 첫 epoch가 아니면, 지금까지 있던 epoch 중에서  
         이번 차례에 가장 좋았던 선택 vs 랜덤 선택을 확률적으로 시킴
         '''
         random_decision = randint(0, decision_len - 1)
-
-        
-
         if self.epoch != 0 and index < len(self.best_move_arr):
             best_decision = self.best_move_arr[index]
             random_percent = random()
             # 주어진 확률로 더 좋은 선택을 함
-            if random_percent <= percent :
+            if random_percent <= self.random_percent :
                 return best_decision
             else :
                 return self.next_decision_arr[random_decision]
         else :
             return self.next_decision_arr[random_decision]
             
-    def epoch_end_process(self) :
+    def epoch_end_process(self) -> SysMessage:
         self.escaped_log.append(self.escaped)
         self.get_best_arr()
-        self.epoch += 1
-        self._cur_state = "Wait"
+
+        msg = SysMessage(self.get_name(), "NPC2GAME")
+        msg.insert("epoch_end")
+        msg.insert(self.get_name())
+        return msg
 
         
 
     def ext_trans(self, port, msg) :
         if port == "GAME2NPC" :
             if msg.retrieve()[0] == "EpochStart" :
+                if self.move_log[-1] != [] :
+                    self.move_log.append([])
+                    self.score_log.append([])
+                    self.epoch += 1
+
                 self.escaped = 0
                 self.score = 500
-                self.move_log.append([])
-                self.score_log.append([])
                 self.location = self.start_location
                 self._cur_state = "EpochStart"
 
@@ -186,16 +192,18 @@ class NPCModel(BehaviorModelExecutor) :
                 self._cur_state = "Move"
 
             elif msg.retrieve()[0] == "Bumped" :
-                hol_zzack = msg.retrieve()[1]
-                for name in msg.retrieve()[2:] :
-                    if name == self.get_name() :
-                        # 얘가 부딛친 애면 이전 위치로 이동하고 점수 50점 뺌
-                        self.location = self.old_location
-                        self.score_log[-1][-1] -= 50
-                        self.score -= 50
-                        if int(name) % 2 == str(hol_zzack) :
-                            self.next_decision_arr = [4]
-                        # 다음 선택은 홀짝에 따라 멈추도록 함
+                colli_arr = msg.retrieve()[1]
+                if len(colli_arr) != 0 :
+                    for group in colli_arr :
+                        for name in group :
+                            if name == self.get_name() :
+                                # 얘가 부딛친 애면 이전 위치로 이동하고 점수 50점 뺌
+                                self.location = self.old_location
+                                self.score_log[-1][-1] -= 50
+                                self.score -= 50
+                                del self.next_decision_arr[self.next_decision_arr.index(self.current_decision)]
+                                self.next_decision_arr.append(4)
+                                # 방금 한 선택을 지워버리고 멈춘다는 선택지를 넣음
                 
 
     def output(self) :
@@ -210,9 +218,9 @@ class NPCModel(BehaviorModelExecutor) :
                 selection_len = len(self.next_decision_arr)
                 # 어디로 갈지 선택하기
                 if len(self.move_log[self.epoch]) == 0 :
-                    self.current_decision = self.make_choice(0, 0.5, selection_len)
+                    self.current_decision = self.make_choice(0, selection_len)
                 else :
-                    self.current_decision = self.make_choice(len(self.move_log[self.epoch]) - 1, 0.5, selection_len)
+                    self.current_decision = self.make_choice(len(self.move_log[self.epoch]) - 1, selection_len)
                 # 이동하기
                 self.move_location()                
                 # 그리드 세계 밖으로 나갔나 확인하기
@@ -221,19 +229,15 @@ class NPCModel(BehaviorModelExecutor) :
                 if self.location == self.end_point :
                     self.score_log[self.epoch][len(self.score_log[self.epoch]) - 1] += 100
                     self.escaped = 1
-                    self.escaped_log.append(self.escaped)
-                    self.epoch_end_process()
+                    return self.epoch_end_process()
+                
                 if self.next_decision_arr == [4] :
                     self.next_decision_arr = [0, 1, 2, 3]
                     
         elif self.get_cur_state() == "MoveCheck" :
             # 이동 횟수 다했나 확인
             if len(self.move_log[self.epoch]) >= self.max_move :
-                self.escaped_log.append(self.escaped)
-                self.get_best_arr()
-                msg = SysMessage(self.get_name(), "agent_end")
-                msg.insert(self.get_name())
-                return msg
+                return self.epoch_end_process()
             
     def int_trans(self) :
         if self.get_cur_state() == "EpochStart" :

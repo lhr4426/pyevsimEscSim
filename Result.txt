@@ -1,0 +1,21 @@
+Best Move Log and Score
+
+End Point : [0, 7]
+
+===========================================
+Agent 0
+- Start Location : [0, 6]
+- Move Log : r 
+- Raw Move Log : [3]
+- Escaped : True
+- Final Score : 599
+
+===========================================
+Agent 1
+- Start Location : [4, 6]
+- Move Log : u u u r u 
+- Raw Move Log : [0, 0, 0, 3, 0]
+- Escaped : True
+- Final Score : 595
+
+===========================================
