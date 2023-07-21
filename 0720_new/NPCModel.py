@@ -144,8 +144,8 @@ class NPCModel(BehaviorModelExecutor) :
         print(f"current epoch : {self.epoch}")
         print(f"score log : {self.score_log[self.epoch]}")
         print(f"move log : {self.move_log[self.epoch]}")
-        print(f"current score : {self.score}")
-        print(f"current decision : {self.current_decision}")
+        # print(f"current score : {self.score}")
+        # print(f"current decision : {self.current_decision}")
 
     def make_choice(self,index, decision_len) -> int :
         '''
@@ -181,27 +181,32 @@ class NPCModel(BehaviorModelExecutor) :
                 if self.move_log[-1] != [] :
                     self.move_log.append([])
                     self.score_log.append([])
-                    self.epoch += 1
 
+                self.epoch = msg.retrieve()[1]
                 self.escaped = 0
                 self.score = 500
                 self.location = self.start_location
                 self._cur_state = "EpochStart"
 
             elif msg.retrieve()[0] == "Move" :
-                self._cur_state = "Move"
+                if self.get_name() not in str(msg.retrieve()[1]) :
+                    self._cur_state = "Move"
+                else :
+                    self._cur_state = "Wait"
 
             elif msg.retrieve()[0] == "Bumped" :
                 colli_arr = msg.retrieve()[1]
                 if len(colli_arr) != 0 :
                     for group in colli_arr :
                         for name in group :
-                            if name == self.get_name() :
+                            if str(name) == self.get_name() :
                                 # 얘가 부딛친 애면 이전 위치로 이동하고 점수 50점 뺌
                                 self.location = self.old_location
-                                self.score_log[-1][-1] -= 50
+                                if len(self.score_log[-1]) != 0 :
+                                    self.score_log[-1][-1] -= 50
                                 self.score -= 50
-                                del self.next_decision_arr[self.next_decision_arr.index(self.current_decision)]
+                                if self.current_decision in self.next_decision_arr :
+                                    del self.next_decision_arr[self.next_decision_arr.index(self.current_decision)]
                                 self.next_decision_arr.append(4)
                                 # 방금 한 선택을 지워버리고 멈춘다는 선택지를 넣음
                 
@@ -215,6 +220,8 @@ class NPCModel(BehaviorModelExecutor) :
             if self.escaped == 1 :
                 pass
             else :
+                if len(self.move_log[self.epoch]) == self.max_move :
+                    return self.epoch_end_process()
                 selection_len = len(self.next_decision_arr)
                 # 어디로 갈지 선택하기
                 if len(self.move_log[self.epoch]) == 0 :
@@ -230,14 +237,12 @@ class NPCModel(BehaviorModelExecutor) :
                     self.score_log[self.epoch][len(self.score_log[self.epoch]) - 1] += 100
                     self.escaped = 1
                     return self.epoch_end_process()
-                
-                if self.next_decision_arr == [4] :
-                    self.next_decision_arr = [0, 1, 2, 3]
                     
         elif self.get_cur_state() == "MoveCheck" :
             # 이동 횟수 다했나 확인
             if len(self.move_log[self.epoch]) >= self.max_move :
-                return self.epoch_end_process()
+                    return self.epoch_end_process()
+            
             
     def int_trans(self) :
         if self.get_cur_state() == "EpochStart" :

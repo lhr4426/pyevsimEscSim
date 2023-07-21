@@ -9,8 +9,8 @@ if __name__ == "__main__" :
 
     game = GameModel.GameModel(instance_time = 0, destruct_time = Infinite, 
                                name='game', engine_name='main_engine', map_size = 10, 
-                               agent_count = 2, max_epoch = 10, 
-                               max_move = 20,random_percent = 0.8)
+                               agent_count = 3, max_epoch = 10, 
+                               max_move = 50, random_percent = 0.5)
     
     engine.register_entity(game)
 

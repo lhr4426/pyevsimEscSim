@@ -2,7 +2,8 @@ from pyevsim import BehaviorModelExecutor, SystemSimulator, Infinite, SysMessage
 from NPCModel import NPCModel, MovingDirection
 from random import randint
 from enum import Enum
-import os, copy
+import os
+import json
 
 class EndPointDirection(Enum) :
     up = 0
@@ -130,12 +131,14 @@ class GameModel(BehaviorModelExecutor) :
         elif self.get_cur_state() == "EpochStart" :
             msg = SysMessage(self.get_name(), "GAME2NPC")
             msg.insert("EpochStart")
+            msg.insert(self.epoch)
             return msg
         
         elif self.get_cur_state() == "Move" :
             self.move_count += 1
             msg = SysMessage(self.get_name(), "GAME2NPC")
             msg.insert("Move")
+            msg.insert(self.ended_agent)
             return msg
         
         elif self.get_cur_state() == "ColliDetec" :
@@ -178,26 +181,49 @@ class GameModel(BehaviorModelExecutor) :
             self.print()
 
         elif self.get_cur_state() == "SimEnd" :
-            with open("Result.txt", "w") as file :
-                file.write("Best Move Log and Score\n\n")
-                file.write(f"End Point : {self.end_point}\n\n")
-                file.write("===========================================\n")
-                for i in range(self.agent_count) :
-                    npc = self.engine.get_entity(f"{i}")[0]
-                    best_arr = npc.best_move_arr
-                    file.write(f"Agent {i}\n")
-                    file.write(f"- Start Location : {npc.start_location}\n")
-                    file.write(f"- Move Log : ")
-                    for direction in best_arr :
-                            file.write(f"{MovingDirection(direction).name} ")
-                    file.write(f"\n- Raw Move Log : {best_arr}")
-                    file.write(f"\n- Escaped : ")
-                    if npc.best_escaped == 1 :
-                        file.write("True")
-                    else :
-                        file.write("False")
-                    file.write(f"\n- Final Score : {npc.best_score}\n\n")
-                    file.write("===========================================\n")
+            # Json 파일로 저장하는 방법 --------------------------
+            dict_data = {
+                "end_point" : self.end_point,
+            }
+            
+            for i in range(self.agent_count) :
+                npc = self.engine.get_entity(f"{i}")[0]
+                temp_dict = {
+                    "start_loc" : npc.start_location,
+                    "best_arr" : npc.best_move_arr,
+                    "escaped" : npc.escaped,
+                    "final_score" : npc.best_score
+                }
+                dict_data[f'{i}'] = temp_dict
+
+            json_data = json.dumps(dict_data)
+            print(json_data)
+
+            with open("Result.json", "w") as file:
+                file.write(json_data)
+
+
+            # 텍스트 파일로 저장하는 방법 --------------------------
+            # with open("Result.txt", "w") as file :
+            #     file.write("Best Move Log and Score\n\n")
+            #     file.write(f"End Point : {self.end_point}\n\n")
+            #     file.write("===========================================\n")
+            #     for i in range(self.agent_count) :
+            #         npc = self.engine.get_entity(f"{i}")[0]
+            #         best_arr = npc.best_move_arr
+            #         file.write(f"Agent {i}\n")
+            #         file.write(f"- Start Location : {npc.start_location}\n")
+            #         file.write(f"- Move Log : ")
+            #         for direction in best_arr :
+            #                 file.write(f"{MovingDirection(direction).name} ")
+            #         file.write(f"\n- Raw Move Log : {best_arr}")
+            #         file.write(f"\n- Escaped : ")
+            #         if npc.best_escaped == 1 :
+            #             file.write("True")
+            #         else :
+            #             file.write("False")
+            #         file.write(f"\n- Final Score : {npc.best_score}\n\n")
+            #         file.write("===========================================\n")
             exit()
 
     def int_trans(self) :
