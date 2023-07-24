@@ -8,7 +8,7 @@ class ResultViewer(BehaviorModelExecutor) :
     json 파싱해서 움직임을 그대로 재현
     '''
 
-    def __init__(self, instance_time, destruct_time, name, engine_name, map_size, file_path, agent_count) :
+    def __init__(self, instance_time, destruct_time, name, engine_name, map_size, agent_count) :
         BehaviorModelExecutor.__init__(self, instance_time, destruct_time, name, engine_name)
         self.init_state("Init")
         self.insert_state("Init", Infinite)
@@ -16,26 +16,21 @@ class ResultViewer(BehaviorModelExecutor) :
         self.insert_state("Move", 1)
         self.insert_state("SimEnd", 1)
 
-        self.insert_input_port("start")
+        self.insert_input_port("GAME2VIEWER")
 
-        self.file = json.load(open(file_path, "r"))
+        self.file = None
+        
 
         self.map_size = map_size
         self.current_map = [['O'] * map_size for _ in range(map_size)]
-        self.end_point = self.file['end_point']
-        self.current_map[self.end_point[0]][self.end_point[1]] = 'H'
+        self.end_point = []
 
         self.move_count = 0
         self.agent_count = agent_count
         
         self.agent_location = [] # 2차원 
         self.agent_move_log = [] # 2차원
-
-        for i in range(self.agent_count) :
-            self.agent_location.append(self.file[f"{i}"]["start_loc"])
-            self.agent_move_log.append(self.file[f"{i}"]["best_arr"])
-            
-        self.old_agent_location = copy.deepcopy(self.agent_location)
+        self.old_agent_location = []
 
         
     def get_moving_location(self, current_loc, direction) -> list :
@@ -66,7 +61,19 @@ class ResultViewer(BehaviorModelExecutor) :
 
 
     def ext_trans(self, port, msg):
-        if port == "start" :
+        if port == "GAME2VIEWER" :
+            file_path = msg.retrieve()[0]
+            self.file = json.load(open(file_path, "r"))
+
+            self.end_point = self.file['end_point']
+            self.current_map[self.end_point[0]][self.end_point[1]] = 'H'
+
+            for i in range(self.agent_count) :
+                self.agent_location.append(self.file[f"{i}"]["start_loc"])
+                self.agent_move_log.append(self.file[f"{i}"]["best_arr"])
+         
+
+            self.old_agent_location = copy.deepcopy(self.agent_location)
             self._cur_state = "PrintMap"
     
     def output(self):

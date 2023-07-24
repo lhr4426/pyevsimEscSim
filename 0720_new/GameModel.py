@@ -1,5 +1,5 @@
 from pyevsim import BehaviorModelExecutor, SystemSimulator, Infinite, SysMessage
-from NPCModel import NPCModel, MovingDirection
+from NPCModel import NPCModel
 from random import randint
 from enum import Enum
 import os
@@ -28,13 +28,17 @@ class GameModel(BehaviorModelExecutor) :
         self.insert_state("ColliDetec", 1)
         self.insert_state("PrintMap", 1)
         self.insert_state("SimEnd", 1)
+        self.insert_state("Wait", 1)
 
         self.insert_input_port("start")
         self.insert_input_port("NPC2GAME")
         self.insert_output_port("GAME2NPC")
+        self.insert_output_port("GAME2VIEWER")
 
 
         self.engine = SystemSimulator.get_engine(self.get_engine_name())
+
+        self.sim_end = 0
 
         self.max_epoch = max_epoch
         self.map_size = map_size
@@ -50,6 +54,12 @@ class GameModel(BehaviorModelExecutor) :
         self.agent_count = agent_count # 에이전트의 수
         self.agent_location_arr = []
         self.ended_agent = []
+
+        self.best_move_log = [[] for _ in range(self.agent_count)]
+        self.this_epoch_move_log = [[] for _ in range(self.agent_count)]
+        self.old_game_score = -9999
+
+        self.game_score = 500
 
     def get_endPoint(self) -> int :
         '''
@@ -90,25 +100,34 @@ class GameModel(BehaviorModelExecutor) :
         if port == "start" :
             self._cur_state = "NpcGen"
         elif port == "NPC2GAME" :
-            if msg.retrieve()[0] == "epoch_end" :
-                end_npc = self.engine.get_entity(f"{msg.retrieve()[1]}")[0]
-                end_npc_location = end_npc.get_location()
-                # 이 NPC가 탈출에 성공해서 조기종료 한 것인지?
-                if end_npc.escaped == 1 :
-                    self.current_map[end_npc_location[0]][end_npc_location[1]] = '문'
-                    self.agent_location_arr[int(msg.retrieve()[1])] = [None, None]
-                # 끝난 에이전트 모음에 추가
-                if msg.retrieve()[1] not in self.ended_agent :
-                    self.ended_agent.append(msg.retrieve()[1])
-                # 이 에이전트가 끝났을 시점에 모든 에이전트가 끝났고, 에포크도 다 돌았다면
-                # SimEnd로 상태천이
-                if len(self.ended_agent) == self.agent_count and self.epoch >= self.max_epoch :
-                    self._cur_state = "SimEnd"
-                elif len(self.ended_agent) == self.agent_count and self.epoch < self.max_epoch :
-                    # 다음 에포크 돌도록 상태천이
-                    self.ended_agent = []
-                    self.epoch += 1
-                    self._cur_state = "EpochStart"
+            if self.sim_end == 1 :
+                self._cur_state = "Wait"
+            else :
+                if msg.retrieve()[0] == "epoch_end" :
+                    end_npc = self.engine.get_entity(f"{msg.retrieve()[1]}")[0]
+                    end_npc_location = end_npc.get_location()
+                    # 이 NPC가 탈출에 성공해서 조기종료 한 것인지?
+                    if end_npc.escaped == 1 :
+                        self.game_score += 1000
+                        self.current_map[end_npc_location[0]][end_npc_location[1]] = '문'
+                        self.agent_location_arr[int(msg.retrieve()[1])] = [None, None]
+                    # 끝난 에이전트 모음에 추가
+                    if msg.retrieve()[1] not in self.ended_agent :
+                        self.ended_agent.append(msg.retrieve()[1])
+                    # 이 에이전트가 끝났을 시점에 모든 에이전트가 끝났고, 에포크도 다 돌았다면
+                    # SimEnd로 상태천이
+                    if len(self.ended_agent) == self.agent_count and self.epoch == self.max_epoch - 1 :
+                        self._cur_state = "SimEnd"
+                        self.sim_end = 1
+                    elif len(self.ended_agent) == self.agent_count and self.epoch < self.max_epoch - 1 :
+                        # 다음 에포크 돌도록 상태천이
+                        # 그 전에, 좋았던 game_score를 찾아야됨
+                        # if self.old_game_score < self.game_score :
+                        #     self.best_move_log = 
+                        self.game_score_log.append(self.game_score)
+                        self.ended_agent = []
+                        self.epoch += 1
+                        self._cur_state = "EpochStart"
 
     def output(self) :
         if self.get_cur_state() == "NpcGen" :
@@ -122,13 +141,15 @@ class GameModel(BehaviorModelExecutor) :
                 self.engine.register_entity(npc)
                 self.engine.coupling_relation(self, "GAME2NPC", npc, "GAME2NPC")
                 self.engine.coupling_relation(npc, "NPC2GAME", self, "NPC2GAME")
-                while (npc.get_location() in self.agent_location_arr) :
+                while (npc.get_location() in self.agent_location_arr or npc.get_location() == self.end_point) :
                     npc.reset_location()
                 self.agent_location_arr.append(npc.get_location())
             self.draw_agent()
             self.print()
 
         elif self.get_cur_state() == "EpochStart" :
+            self.game_score = 500
+            
             msg = SysMessage(self.get_name(), "GAME2NPC")
             msg.insert("EpochStart")
             msg.insert(self.epoch)
@@ -161,6 +182,8 @@ class GameModel(BehaviorModelExecutor) :
                     del agent_arr[agent_arr.index(j)]            
                     
             if len(colli_arr) != 0 :
+                # 부딛친 그룹 당 50점씩 빼기
+                self.game_score -= (len(colli_arr) * 50)
                 msg.insert(colli_arr)
                 return msg
             
@@ -224,7 +247,16 @@ class GameModel(BehaviorModelExecutor) :
             #             file.write("False")
             #         file.write(f"\n- Final Score : {npc.best_score}\n\n")
             #         file.write("===========================================\n")
-            exit()
+            
+            # exit()
+            msg = SysMessage(self.get_name(), "GAME2VIEWER")
+            msg.insert("Result.json")
+            self.engine.sim_mode = "REAL_TIME"
+
+            return msg
+        
+        elif self._cur_state == "Wait" :
+            pass
 
     def int_trans(self) :
         if self.get_cur_state() == "NpcGen" :
@@ -237,3 +269,7 @@ class GameModel(BehaviorModelExecutor) :
             self._cur_state = "PrintMap"
         elif self.get_cur_state() == "PrintMap" :
             self._cur_state = "Move"
+        elif self.get_cur_state() == "SimEnd" :
+            self._cur_state = "Wait"
+        elif self.get_cur_state() == "Wait" :
+            self._cur_state = "Wait"

@@ -52,7 +52,7 @@ class NPCModel(BehaviorModelExecutor) :
         self.best_move_arr = []
         self.best_score_arr = []
         self.best_escaped = 0
-        self.best_score = 999
+        self.best_score = -9999
         # move log의 길이
         self.current_decision = None
         self.escaped = 0
@@ -75,20 +75,48 @@ class NPCModel(BehaviorModelExecutor) :
     def get_best_arr(self) -> None:
         '''
         가장 좋았던 epoch의 move_log를 best_arr로 지정함.   
-        조건 1. 점수가 높을 것
-        조건 2. 점수가 같다면 회수가 더 낮은것 고를 것
+        조건 1. 탈출했을 것
+        조건 2. 점수가 높을 것
+        조건 3. 점수가 같다면 회수가 더 낮은것 고를 것
         '''
-        temp_best_idx = 0
-        for i in range(len(self.move_log) - 1) :
-            if self.score_log[i][-1] > self.score_log[temp_best_idx][-1] :
-                temp_best_idx = i
-            elif self.score_log[i][-1] == self.score_log[temp_best_idx][-1] :
-                if len(self.move_log[i]) < len(self.move_log[temp_best_idx]) :
-                    temp_best_idx = i
-        self.best_move_arr = self.move_log[temp_best_idx]
-        self.best_score_arr = self.score_log[temp_best_idx]
-        self.best_escaped = self.escaped_log[temp_best_idx]
+        best_idx = 0
+        escaped_index_list = list(filter(lambda x: self.escaped_log[x] == 1, range(len(self.escaped_log))))
+        if len(escaped_index_list) != 0 :
+            best_idx = escaped_index_list[0]
+        
+        if len(escaped_index_list) != 0 :
+            for i in escaped_index_list :
+                if self.score_log[i][-1] > self.best_score :
+                    # i번째 결과 점수가 best_idx 번째 결과 점수보다 높으면
+                    best_idx = i
+                elif self.score_log[i][-1] == self.best_score :
+                    # 결과 점수가 같으면 이동회수가 더 짧은걸로 고름
+                    if len(self.move_log[i]) < len(self.move_log[best_idx]) :
+                        best_idx = i
+        elif len(escaped_index_list) == 0 :
+            for i in range(len(self.score_log)) :
+                if self.score_log[i][-1] > self.best_score :
+                    best_idx = i
+                elif self.score_log[i][-1] == self.best_score :
+                    if len(self.move_log[i]) < len(self.move_log[best_idx]) :
+                        best_idx = i
+        
+        self.best_move_arr = self.move_log[best_idx]
+        self.best_score_arr = self.score_log[best_idx]
+        self.best_escaped = self.escaped_log[best_idx]
         self.best_score = self.best_score_arr[-1]
+                
+        # temp_best_idx = 0
+        # for i in range(len(self.move_log) - 1) :
+        #     if self.score_log[i][-1] > self.score_log[temp_best_idx][-1] :
+        #         temp_best_idx = i
+        #     elif self.score_log[i][-1] == self.score_log[temp_best_idx][-1] :
+        #         if len(self.move_log[i]) < len(self.move_log[temp_best_idx]) :
+        #             temp_best_idx = i
+        # self.best_move_arr = self.move_log[temp_best_idx]
+        # self.best_score_arr = self.score_log[temp_best_idx]
+        # self.best_escaped = self.escaped_log[temp_best_idx]
+        # self.best_score = self.best_score_arr[-1]
     
 
 
@@ -216,6 +244,8 @@ class NPCModel(BehaviorModelExecutor) :
             pass
         
         elif self.get_cur_state() == "Move" :
+            print("===============================")
+            print(f"Agent {self.get_name()}")
             print(f"Next Decision Array : {self.next_decision_arr}")
             if self.escaped == 1 :
                 pass
@@ -234,7 +264,8 @@ class NPCModel(BehaviorModelExecutor) :
                 self.out_of_range_check()
                 # 문까지 갔나 확인하기
                 if self.location == self.end_point :
-                    self.score_log[self.epoch][len(self.score_log[self.epoch]) - 1] += 100
+                    self.score_log[self.epoch][-1] += 1000
+                    self.score += 1000
                     self.escaped = 1
                     return self.epoch_end_process()
                     
@@ -247,13 +278,14 @@ class NPCModel(BehaviorModelExecutor) :
     def int_trans(self) :
         if self.get_cur_state() == "EpochStart" :
             self._cur_state = "Wait"
-        if self.get_cur_state() == "Move" and self.escaped == 0:
+        elif self.get_cur_state() == "Move" :
             self._cur_state = "MoveCheck"
-        elif self.get_cur_state() == "Move" and self.escaped == 1:
-            self._cur_state = "Wait"
         elif self.get_cur_state() == "MoveCheck" :
             self._cur_state = "Wait"
         elif self.get_cur_state() == "Wait" :
+            self._cur_state = "Wait"
+
+        if self.escaped == 1 :
             self._cur_state = "Wait"
 
             
