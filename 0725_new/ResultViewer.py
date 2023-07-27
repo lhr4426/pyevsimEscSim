@@ -30,8 +30,10 @@ class ResultViewer(BehaviorModelExecutor) :
         
         self.agent_location = [] # 2차원 
         self.agent_move_log = [] # 2차원
+        self.agent_score_delta = [] # 2차원
         self.old_agent_location = []
         self.current_decision = [None for _ in range(self.agent_count)]
+        self.current_score_delta = [None for _ in range(self.agent_count)]
 
         
     def get_moving_location(self, current_loc, direction) -> list :
@@ -57,9 +59,6 @@ class ResultViewer(BehaviorModelExecutor) :
         for i in range(self.agent_count) :
             if self.agent_location[i][0] < 0 or self.agent_location[i][0] > self.map_size - 1 or self.agent_location[i][1] < 0 or self.agent_location[i][1] > self.map_size - 1 :
                 self.agent_location[i] = self.old_agent_location[i]
-                
-
-
 
     def ext_trans(self, port, msg):
         if port == "GAME2VIEWER" :
@@ -73,8 +72,10 @@ class ResultViewer(BehaviorModelExecutor) :
             for i in range(self.agent_count) :
                 self.agent_location.append(self.file[f"{i}"]["start_loc"])
                 self.agent_move_log.append(self.file[f"{i}"]["best_arr"])
+                self.agent_score_delta.append(self.file[f"{i}"]["score_delta"])
          
             self.old_agent_location = copy.deepcopy(self.agent_location)
+            
             self._cur_state = "PrintMap"
     
     def output(self):
@@ -92,7 +93,7 @@ class ResultViewer(BehaviorModelExecutor) :
             print("-----------------------")
             for i in range(self.agent_count) :
                 if self.agent_location[i] != self.end_point :
-                    print(f"Agent {i} : {self.current_decision[i]}")
+                    print(f"Agent {i} : {self.current_decision[i]}\t{self.current_score_delta[i]}")
                     print("-----------------------")
 
         elif self.get_cur_state() == "Move" :
@@ -105,6 +106,8 @@ class ResultViewer(BehaviorModelExecutor) :
                     self.old_agent_location[i] = self.agent_location[i]
                     self.agent_location[i] = self.get_moving_location(self.agent_location[i], self.agent_move_log[i][self.move_count])
                     self.current_decision[i] = MovingDirection(self.agent_move_log[i][self.move_count]).name
+                    self.current_score_delta[i] = self.agent_score_delta[i][self.move_count]
+                
             self.move_count += 1
             self.out_of_range_check()
 

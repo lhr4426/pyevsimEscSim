@@ -23,7 +23,6 @@ class NPCModel(BehaviorModelExecutor) :
         self.insert_state("Init", Infinite)
         self.insert_state("EpochStart", 1)
         self.insert_state("Move", 1)
-        self.insert_state("MoveCheck", 1)
         self.insert_state("Bumped", 1)
         self.insert_state("Wait", Infinite)
     
@@ -164,7 +163,18 @@ class NPCModel(BehaviorModelExecutor) :
         elif self.current_decision == MovingDirection.r.value :
             if MovingDirection.l.value in self.next_decision_arr :
                 del self.next_decision_arr[self.next_decision_arr.index(MovingDirection.l.value)]
+
+        # 빙글빙글 방지
+        if len(self.move_log) > 4 :
+            diff = [loc1 - loc2 for loc1, loc2 in zip(self.location_log[-3], self.location)]
+            if diff == [-1, 0] :
+                if MovingDirection.d.value in self.next_decision_arr :
+                    del self.next_decision_arr[self.next_decision_arr.index(MovingDirection.d.value)]
+            elif diff == [1, 0] :
+                if MovingDirection.u.value in self.next_decision_arr :
+                    del self.next_decision_arr[self.next_decision_arr.index(MovingDirection.u.value)]
                 
+
     def out_of_range_check(self) :
         # 만약에 이동했는데 위치가 이상함
         msg = None
@@ -181,6 +191,7 @@ class NPCModel(BehaviorModelExecutor) :
             # 다음 결정에서는 다른 선택을 하도록, 방금 전에 한 선택을 뺌
             msg = SysMessage(self.get_name(), "NPC2GAME")
             msg.insert("out_of_range")
+            msg.insert(self.get_name())
             
         # 이동했을때 위치가 이상하지 않음
         else :
@@ -192,8 +203,16 @@ class NPCModel(BehaviorModelExecutor) :
         self.move_log.append(self.current_decision)
         self.score_delta.append(-1)
 
-        if msg is not None :return msg
-        else : return None
+        if len(self.move_log) >= self.max_move :
+            # 방금게 마지막 움직임이었으면
+            return self.epoch_end_process()
+        else :
+            if msg is not None :return msg
+            else : 
+                msg = SysMessage(self.get_name(), "NPC2GAME")
+                msg.insert("move_end")
+                msg.insert(self.get_name())
+                return msg
         # print(f"current epoch : {self.epoch}")
         # print(f"move log : {self.move_log[self.epoch]}")
         # print(f"current score : {self.score}")
@@ -208,7 +227,8 @@ class NPCModel(BehaviorModelExecutor) :
         '''
         if decision_len == 0 :
             self.next_decision_arr = [0,1,2,3]
-            decision_len = 4
+            self.remove_opposite_moving()
+            decision_len = len(self.next_decision_arr)
 
         random_decision = randint(0, decision_len - 1)  
 
@@ -219,7 +239,8 @@ class NPCModel(BehaviorModelExecutor) :
                     decision_len -= 1
                     if decision_len == 0 :
                         self.next_decision_arr = [0,1,2,3]
-                        return 4
+                        self.remove_opposite_moving()
+                        return self.next_decision_arr[randint(0, len(self.next_decision_arr) - 1)]
                     else :
                         random_decision = randint(0, decision_len - 1)
                 return self.next_decision_arr[random_decision]
@@ -250,21 +271,20 @@ class NPCModel(BehaviorModelExecutor) :
 
 
     def compress_move_log(self) :
-        
         while(self.max_move > 4) :
             flags = [1, 1, 1]
-            idx = 3
+            idx = 4
             while(True) :
-                if len(self.location_log) < 4 or idx > len(self.location_log) - 1:
+                if len(self.location_log) < 5 or idx > len(self.location_log) - 1:
                     break
                 # 빙글 돌았을 경우
-                if self.is_one_location_diff(self.location_log[idx - 3], self.location_log[idx - 2]) and self.is_one_location_diff(self.location_log[idx - 2], self.location_log[idx - 1]) and self.is_one_location_diff(self.location_log[idx - 1], self.location_log[idx]) and self.location_log[idx] == self.location_log[idx - 3] :
-                    del self.move_log[idx - 2: idx + 1]
-                    del self.score_delta[idx - 2 : idx + 1]
-                    del self.location_log[idx - 2 : idx + 1]
+                if self.is_one_location_diff(self.location_log[idx - 4], self.location_log[idx - 3]) and self.is_one_location_diff(self.location_log[idx - 3], self.location_log[idx - 2]) and self.is_one_location_diff(self.location_log[idx - 2], self.location_log[idx - 1]) and self.is_one_location_diff(self.location_log[idx - 1], self.location_log[idx]) and self.location_log[idx] == self.location_log[idx - 4] :
+                    del self.move_log[idx - 3: idx + 1]
+                    del self.score_delta[idx - 3 : idx + 1]
+                    del self.location_log[idx - 3 : idx + 1]
                     # print(f"빙글 압축 후 : {self.location_log}, {len(self.location_log)}")
                     idx -= 1
-                    if idx < 3 : idx = 3
+                    if idx < 4 : idx = 4
                     flags[0] = 0
                     continue
                 else :
@@ -274,10 +294,11 @@ class NPCModel(BehaviorModelExecutor) :
                 if len(self.location_log) < 4 or idx > len(self.location_log) - 1:
                     break
                 # 돌다 만 경우
-                if self.is_one_location_diff(self.location_log[idx], self.location_log[idx-3]) :
+                if self.is_one_location_diff(self.location_log[idx - 3], self.location_log[idx - 2]) and self.is_one_location_diff(self.location_log[idx - 2], self.location_log[idx - 1]) and self.is_one_location_diff(self.location_log[idx - 1], self.location_log[idx]) and self.is_one_location_diff(self.location_log[idx - 3], self.location_log[idx]):
                     del self.move_log[idx - 2]
                     del self.move_log[idx - 1]
                     del self.score_delta[idx - 2 : idx]
+                    self.score_delta[idx - 2] = -1
                     del self.location_log[idx - 2 : idx]
                     # print(f"반 빙글 압축 후 : {self.location_log}, {len(self.location_log)}")
                     idx -= 1
@@ -307,14 +328,19 @@ class NPCModel(BehaviorModelExecutor) :
 
     def epoch_end_process(self) -> SysMessage :
         # self.get_best_arr()
-        print(f"Location Log 압축 전 : {self.location_log}, {len(self.location_log)}")
-        print(f"Move Log 압축 전 : {self.move_log}, {len(self.move_log)}")
-        print(f"Score Delta 압축 전 : {self.score_delta}, {len(self.score_delta)}")
-        self.compress_move_log()
-        print(f"Location Log 압축 후 : {self.location_log}, {len(self.location_log)}")
-        print(f"Move Log 압축 후 : {self.move_log}, {len(self.move_log)}")
-        print(f"Score Delta 압축 후 : {self.score_delta}, {len(self.score_delta)}")
+        # print(f"Location Log 압축 전 : {self.location_log}, {len(self.location_log)}")
+        # print(f"Move Log 압축 전 : {self.move_log}, {len(self.move_log)}")
+        # print(f"Score Delta 압축 전 : {self.score_delta}, {len(self.score_delta)}")
+        # self.compress_move_log()
+        # print(f"Location Log 압축 후 : {self.location_log}, {len(self.location_log)}")
+        # print(f"Move Log 압축 후 : {self.move_log}, {len(self.move_log)}")
+        # print(f"Score Delta 압축 후 : {self.score_delta}, {len(self.score_delta)}")
     
+        print(f"{self.location_log}")
+        if self.escaped == 1 :
+            assert self.location_log[-1] == self.end_point
+        assert len(self.location_log) == len(self.move_log)
+
         msg = SysMessage(self.get_name(), "NPC2GAME")
         msg.insert("epoch_end")
         msg.insert(self.get_name())
@@ -361,12 +387,15 @@ class NPCModel(BehaviorModelExecutor) :
             else :
                 # 문까지 갔나 확인하기
                 if self.location == self.end_point :
-                    self.score_delta[-1] += 1000
+                    self.location_log.append(self.location)
+                    self.move_log.append(self.current_decision)
+                    self.score_delta.append(1000) 
                     self.escaped = 1
                     return self.epoch_end_process()
 
                 if len(self.move_log) == self.max_move :
                     return self.epoch_end_process()
+    
                 selection_len = len(self.next_decision_arr)
                 # 어디로 갈지 선택하기
                 if len(self.move_log) == 0 :
@@ -377,16 +406,7 @@ class NPCModel(BehaviorModelExecutor) :
                 self.move_location()                
                 # 그리드 세계 밖으로 나갔나 확인하기
                 out_of_range_msg = self.out_of_range_check()
-                if out_of_range_msg is not None :
-                    return out_of_range_msg
-                    
-                
-                
-                    
-        elif self.get_cur_state() == "MoveCheck" :
-            # 이동 횟수 다했나 확인
-            if len(self.move_log) >= self.max_move :
-                    return self.epoch_end_process()
+                return out_of_range_msg
             
         elif self.get_cur_state() == "Bumped" :
             colli_arr = self.colli_msg.retrieve()[1]
@@ -407,12 +427,12 @@ class NPCModel(BehaviorModelExecutor) :
                                 del self.next_decision_arr[self.next_decision_arr.index(self.current_decision)]                                
                             
 
-                            # 굳이 지울필요 있나..?
-                            for i in range(len(self.location_log) - 1, -1, -1) :
-                                if self.location_log[i] == colli_location :
-                                    del self.location_log[i]
-                                    del self.move_log[i]
-                                    break
+                            # # 굳이 지울필요 있나..?
+                            # for i in range(len(self.location_log) - 1, -1, -1) :
+                            #     if self.location_log[i] == colli_location :
+                            #         del self.location_log[i]
+                                    
+                            #         break
                             
 
                             random_percent = random()
@@ -427,8 +447,6 @@ class NPCModel(BehaviorModelExecutor) :
         if self.get_cur_state() == "EpochStart" :
             self._cur_state = "Wait"
         elif self.get_cur_state() == "Move" :
-            self._cur_state = "MoveCheck"
-        elif self.get_cur_state() == "MoveCheck" :
             self._cur_state = "Wait"
         elif self.get_cur_state() == "Wait" :
             self._cur_state = "Wait"
