@@ -9,8 +9,8 @@ if __name__ == "__main__" :
     engine.insert_input_port("start")
 
     map_size = 10
-    agent_count = 3
-    max_epoch = 50
+    agent_count = 4
+    max_epoch = 150
     max_move = 50
     random_percent = 0.75
 

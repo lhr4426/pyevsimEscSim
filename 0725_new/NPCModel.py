@@ -54,6 +54,7 @@ class NPCModel(BehaviorModelExecutor) :
         self.current_decision = None
         self.escaped = 0
         self.max_move = max_move 
+        self.best_escaped = 0
 
         # 잘 탈출한 선례를 몇 퍼센트의 확률로 따를 것인가
         self.random_percent = random_percent 
@@ -126,11 +127,11 @@ class NPCModel(BehaviorModelExecutor) :
     def move_location(self) :
         print("===============================")
         print(f"Agent {self.get_name()}")
-        print(f"Next Decision Array : {self.next_decision_arr}")
+        # print(f"Next Decision Array : {self.next_decision_arr}")
         print(f"current decision : {self.current_decision}")
         print(f"Current Location : {self.location}")
-        print(f"Move Log : {self.move_log}")
-        print(f"Location Log : {self.location_log}")
+        # print(f"Move Log : {self.move_log}")
+        # print(f"Location Log : {self.location_log}")
         
         self.old_location = self.location
         if self.current_decision == MovingDirection.u.value :
@@ -232,6 +233,9 @@ class NPCModel(BehaviorModelExecutor) :
 
         random_decision = randint(0, decision_len - 1)  
 
+        if self.best_escaped == 0 :
+            return self.next_decision_arr[random_decision]
+
         if self.epoch != 0 and index < len(self.best_move_arr):
             if self.best_score_delta[index] < -10 :
                 if self.best_move_arr[index] in self.next_decision_arr :
@@ -248,7 +252,6 @@ class NPCModel(BehaviorModelExecutor) :
             elif self.best_score_delta[index] > 100 :
                 return self.best_move_arr[index]
 
-              
             best_decision = self.best_move_arr[index]
             random_percent = random()
             # 주어진 확률로 더 좋은 선택을 함
@@ -274,7 +277,7 @@ class NPCModel(BehaviorModelExecutor) :
         while(self.max_move > 4) :
             flags = [1, 1, 1]
             idx = 4
-            while(True) :
+            while(True) : 
                 if len(self.location_log) < 5 or idx > len(self.location_log) - 1:
                     break
                 # 빙글 돌았을 경우
@@ -331,15 +334,15 @@ class NPCModel(BehaviorModelExecutor) :
         # print(f"Location Log 압축 전 : {self.location_log}, {len(self.location_log)}")
         # print(f"Move Log 압축 전 : {self.move_log}, {len(self.move_log)}")
         # print(f"Score Delta 압축 전 : {self.score_delta}, {len(self.score_delta)}")
-        # self.compress_move_log()
+        # self.compress_move_log() # 압축하기
         # print(f"Location Log 압축 후 : {self.location_log}, {len(self.location_log)}")
         # print(f"Move Log 압축 후 : {self.move_log}, {len(self.move_log)}")
         # print(f"Score Delta 압축 후 : {self.score_delta}, {len(self.score_delta)}")
     
-        print(f"{self.location_log}")
-        if self.escaped == 1 :
-            assert self.location_log[-1] == self.end_point
-        assert len(self.location_log) == len(self.move_log)
+        # print(f"{self.location_log}")
+
+        if self.escaped == 1 : 
+            assert self.location_log[-1] == self.end_point == self.location, '위치 로그 마지막이 문이 아닌데 escaped라고 됨'
 
         msg = SysMessage(self.get_name(), "NPC2GAME")
         msg.insert("epoch_end")
@@ -358,6 +361,7 @@ class NPCModel(BehaviorModelExecutor) :
         
                 self.escaped = 0
                 self.location = deepcopy(self.start_location)      
+                self.best_escaped = msg.retrieve()[3][int(self.get_name())]
                 
                 self.epoch = msg.retrieve()[1]
                 if len(msg.retrieve()[2][int(self.get_name())]) != 0 :
@@ -375,7 +379,6 @@ class NPCModel(BehaviorModelExecutor) :
                 self.colli_msg = msg
                 self._cur_state = "Bumped"
                                 
-                
 
     def output(self) :
         if self.get_cur_state() == "EpochStart" :
@@ -387,12 +390,12 @@ class NPCModel(BehaviorModelExecutor) :
             else :
                 # 문까지 갔나 확인하기
                 if self.location == self.end_point :
-                    self.location_log.append(self.location)
-                    self.move_log.append(self.current_decision)
-                    self.score_delta.append(1000) 
+                    self.score_delta[-1] += 1000
                     self.escaped = 1
+                    assert self.location == self.location_log[-1]
+                    self._cur_state = "Wait"
                     return self.epoch_end_process()
-
+                self.escaped = 0
                 if len(self.move_log) == self.max_move :
                     return self.epoch_end_process()
     
@@ -414,11 +417,10 @@ class NPCModel(BehaviorModelExecutor) :
                 for group in colli_arr :
                     for name in group :
                         if str(name) == self.get_name() :
-                            colli_location = deepcopy(self.location)
+                            self.location = deepcopy(self.old_location)
                             # 얘가 부딛친 애면 이전 위치로 이동
-                            if len(self.location_log) <= 1 :
-                                self.location = deepcopy(self.old_location)
-                            else : self.location = self.location_log[-2]
+                            if len(self.location_log) > 1 :
+                                self.location_log[-1] = self.location
                             if len(self.score_delta) == 0 :
                                 self.score_delta.append(-50)
                             else : 
@@ -426,18 +428,21 @@ class NPCModel(BehaviorModelExecutor) :
                             if self.current_decision in self.next_decision_arr :
                                 del self.next_decision_arr[self.next_decision_arr.index(self.current_decision)]                                
                             
-
                             # # 굳이 지울필요 있나..?
                             # for i in range(len(self.location_log) - 1, -1, -1) :
                             #     if self.location_log[i] == colli_location :
                             #         del self.location_log[i]
                                     
                             #         break
-                            
-
+                        
                             random_percent = random()
                             if random_percent <= 0.8 :
                                 self.next_decision_arr = [4]
+                            
+                            msg = SysMessage(self.get_name(), "NPC2GAME")
+                            msg.insert("detect_end")
+                            msg.insert(f"{self.get_name()}")
+                            return msg
                                 # 80% 확률로 멈춤
                             # self.next_decision_arr = list(set(self.next_decision_arr))
                 

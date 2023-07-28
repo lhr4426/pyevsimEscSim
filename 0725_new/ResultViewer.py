@@ -28,6 +28,7 @@ class ResultViewer(BehaviorModelExecutor) :
         self.agent_count = agent_count
         self.escaped_count = 0
         
+        self.best_score = None
         self.agent_location = [] # 2차원 
         self.agent_move_log = [] # 2차원
         self.agent_score_delta = [] # 2차원
@@ -67,6 +68,7 @@ class ResultViewer(BehaviorModelExecutor) :
 
             self.end_point = self.file['end_point']
             self.escaped_count = self.file['escaped_count']
+            self.best_score = self.file['best_score']
             self.current_map[self.end_point[0]][self.end_point[1]] = '□'
 
             for i in range(self.agent_count) :
@@ -89,11 +91,12 @@ class ResultViewer(BehaviorModelExecutor) :
             # os.system("cls") # 윈도우용
             print(*self.current_map, sep="\n")
             print("=========================")
+            print(f"Best Score : {self.best_score}")
             print(f"Escaped Agent Count : {self.escaped_count}")
             print("-----------------------")
             for i in range(self.agent_count) :
                 if self.agent_location[i] != self.end_point :
-                    print(f"Agent {i} : {self.current_decision[i]}\t{self.current_score_delta[i]}")
+                    print(f"Agent {i} : {self.current_decision[i]}")
                     print("-----------------------")
 
         elif self.get_cur_state() == "Move" :

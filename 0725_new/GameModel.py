@@ -56,13 +56,15 @@ class GameModel(BehaviorModelExecutor) :
         self.agent_location_arr = []
         self.ended_agent = []
         self.moved_agent = []
+        self.detect_end_agent = []
+        self.colli_agent = []
         self.need_to_move_agent_count = copy.deepcopy(self.agent_count)
 
         # 가장 괜찮았던 이동 로그(+ 점수변화율) / 점수 / 탈출 에이전트 수
         self.best_move_log = [[[] for _ in range(2)] for _ in range(self.agent_count)]
         self.best_game_score = -9999
         self.best_escaped_count = -1
-        self.best_escaped_agent = []
+        self.best_escaped_agent = [0 for _ in range(self.agent_count)]
 
         # 이번 에포크 이동 로그 / 점수 / 탈출 에이전트 수
         self.this_epoch_move_log = copy.deepcopy(self.best_move_log)
@@ -100,12 +102,12 @@ class GameModel(BehaviorModelExecutor) :
         print(f"Best Score : {self.best_game_score}")
         print(f"Best Escaped Agent Count : {self.best_escaped_count}")
         print(f"Current Score : {self.this_epoch_game_score}")
-        print(f"Current Epoch : {self.epoch}")
+        print(f"Current Epoch : {self.epoch + 1}")
 
     def draw_agent(self) :
         idx = 0
         for loc in self.agent_location_arr :
-            if loc != self.end_point and loc != [None, None]:
+            if loc != self.end_point and str(idx) not in self.ended_agent:
                 self.current_map[loc[0]][loc[1]] = str(idx)
             idx += 1
 
@@ -127,13 +129,21 @@ class GameModel(BehaviorModelExecutor) :
                 if msg.retrieve()[0] == "move_end" :
                     self.moved_agent.append(end_npc.get_name())
                     if len(self.moved_agent) == self.need_to_move_agent_count :
-                        self._cur_state = "ColliDetec"
                         self.moved_agent = []
+                        self._cur_state = "ColliDetec"
+                elif msg.retrieve()[0] == "detect_end" :
+                    self.detect_end_agent.append(int(end_npc.get_name()))
+                    if list(set(self.detect_end_agent)).sort() == list(set(self.colli_agent)).sort() :
+                        self.detect_end_agent = []
+                        self.colli_agent = []
+                        self._cur_state = "PrintMap"
+                    
                 elif msg.retrieve()[0] == "epoch_end" :
                     end_npc_location = end_npc.get_location()
                     # 이 NPC가 탈출에 성공해서 조기종료 한 것인지?
+                    # 조기종료에서 부딛쳤으면 우짬
                     if end_npc.escaped == 1 :
-                        self.this_epoch_game_score += 1000
+                        self.this_epoch_game_score += 200
                         self.this_epoch_escaped_count += 1
                         self.this_epoch_escaped_agent[int(end_npc.get_name())] = 1
                         self.current_map[end_npc_location[0]][end_npc_location[1]] = '문'
@@ -215,11 +225,12 @@ class GameModel(BehaviorModelExecutor) :
             msg.insert("EpochStart")
             msg.insert(self.epoch)
             msg.insert(self.best_move_log)
+            msg.insert(self.best_escaped_agent)
             return msg
         
         elif self.get_cur_state() == "Move" :
             self.move_count += 1
-            self.this_epoch_game_score -= 1
+            self.this_epoch_game_score -= 5
             msg = SysMessage(self.get_name(), "GAME2NPC")
             msg.insert("Move")
             msg.insert(self.ended_agent)
@@ -245,13 +256,14 @@ class GameModel(BehaviorModelExecutor) :
                         self.this_epoch_game_score -= 50
 
                 if len(temp) != 1 :
+                    for x in temp :
+                        self.colli_agent.append(x)
                     colli_arr.append(temp)
                 
                 for j in temp :
                     del agent_arr[agent_arr.index(j)]            
                     
             if len(colli_arr) != 0 :
-                
                 msg.insert(colli_arr)
                 return msg
             
@@ -327,7 +339,7 @@ class GameModel(BehaviorModelExecutor) :
         elif self.get_cur_state() == "Move" :
             self._cur_state = "Wait"
         elif self.get_cur_state() == "ColliDetec" :
-            self._cur_state = "PrintMap"
+            self._cur_state = "Wait"
         elif self.get_cur_state() == "PrintMap" :
             self._cur_state = "Move"
         elif self.get_cur_state() == "SimEnd" :
@@ -335,5 +347,7 @@ class GameModel(BehaviorModelExecutor) :
         elif self.get_cur_state() == "Wait" and len(self.moved_agent) == self.need_to_move_agent_count:
             self.moved_agent = []
             self._cur_state = "ColliDetec"
+        elif self.get_cur_state() == "Wait" and list(set(self.detect_end_agent)) == list(set(self.colli_agent)):
+            self._cur_state = "PrintMap"
         elif self.get_cur_state() == "Wait" :
             self._cur_state = "Wait"
