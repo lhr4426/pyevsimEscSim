@@ -90,9 +90,9 @@ class ResultViewer(BehaviorModelExecutor) :
             os.system("clear") # 맥용
             # os.system("cls") # 윈도우용
             print(*self.current_map, sep="\n")
-            print("=========================")
-            print(f"Best Score : {self.best_score}")
-            print(f"Escaped Agent Count : {self.escaped_count}")
+            # print("=========================")
+            # print(f"Best Score : {self.best_score}")
+            # print(f"Escaped Agent Count : {self.escaped_count}")
             print("-----------------------")
             for i in range(self.agent_count) :
                 if self.agent_location[i] != self.end_point :

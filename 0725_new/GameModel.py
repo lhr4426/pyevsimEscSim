@@ -98,11 +98,11 @@ class GameModel(BehaviorModelExecutor) :
         os.system("clear") # 맥용
         # os.system("cls") # 윈도우용
         print(*self.current_map, sep="\n")
-        print("=============================")
-        print(f"Best Score : {self.best_game_score}")
-        print(f"Best Escaped Agent Count : {self.best_escaped_count}")
-        print(f"Current Score : {self.this_epoch_game_score}")
-        print(f"Current Epoch : {self.epoch + 1}")
+        # print("=============================")
+        # print(f"Best Score : {self.best_game_score}")
+        # print(f"Best Escaped Agent Count : {self.best_escaped_count}")
+        # print(f"Current Score : {self.this_epoch_game_score}")
+        # print(f"Current Epoch : {self.epoch + 1}")
 
     def draw_agent(self) :
         idx = 0

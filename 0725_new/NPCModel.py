@@ -128,7 +128,7 @@ class NPCModel(BehaviorModelExecutor) :
         print("===============================")
         print(f"Agent {self.get_name()}")
         # print(f"Next Decision Array : {self.next_decision_arr}")
-        print(f"current decision : {self.current_decision}")
+        print(f"current decision : {MovingDirection(self.current_decision).name}")
         print(f"Current Location : {self.location}")
         # print(f"Move Log : {self.move_log}")
         # print(f"Location Log : {self.location_log}")

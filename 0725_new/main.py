@@ -10,7 +10,7 @@ if __name__ == "__main__" :
 
     map_size = 10
     agent_count = 4
-    max_epoch = 150
+    max_epoch = 100
     max_move = 50
     random_percent = 0.75
 
